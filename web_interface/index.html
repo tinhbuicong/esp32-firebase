@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 Logs Viewer</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background-color: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      #logContainer {
+        border: 1px solid #ddd;
+        padding: 10px;
+        height: 500px;
+        overflow-y: auto;
+        background-color: #fafafa;
+        border-radius: 4px;
+      }
+      .log-entry {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+      }
+      .log-entry:hover {
+        background-color: #f0f0f0;
+      }
+      .timestamp {
+        color: #666;
+        font-size: 0.9em;
+        min-width: 180px;
+      }
+      .message {
+        flex-grow: 1;
+        margin-left: 20px;
+      }
+      .controls {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      #searchInput {
+        padding: 8px;
+        width: 200px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .status {
+        padding: 8px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        display: none;
+      }
+      .status.connected {
+        background-color: #dff0d8;
+        color: #3c763d;
+        display: block;
+      }
+      .status.disconnected {
+        background-color: #f2dede;
+        color: #a94442;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>ESP32 Logs Viewer</h1>
+      </div>
+
+      <div id="connectionStatus" class="status">Firebase Connection Status</div>
+
+      <div class="controls">
+        <input type="text" id="searchInput" placeholder="Search logs..." />
+        <button onclick="clearLogs()">Clear View</button>
+        <button onclick="exportLogs()">Export Logs</button>
+      </div>
+
+      <div id="logContainer"></div>
+    </div>
+
+    <!-- Firebase App (the core Firebase SDK) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <!-- Firebase Database -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+      // Firebase configuration - Replace with your config
+      const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_AUTH_DOMAIN",
+        databaseURL: "YOUR_DATABASE_URL",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_STORAGE_BUCKET",
+        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+        appId: "YOUR_APP_ID",
+      };
+
+      // Initialize Firebase
+      firebase.initializeApp(firebaseConfig);
+      const database = firebase.database();
+      const logsRef = database.ref("logs");
+
+      // Connection status
+      const connectedRef = database.ref(".info/connected");
+      connectedRef.on("value", (snap) => {
+        const status = document.getElementById("connectionStatus");
+        if (snap.val() === true) {
+          status.textContent = "Connected to Firebase";
+          status.className = "status connected";
+        } else {
+          status.textContent = "Disconnected from Firebase";
+          status.className = "status disconnected";
+        }
+      });
+
+      // Listen for new logs
+      logsRef.on("child_added", (snapshot) => {
+        const log = snapshot.val();
+        addLogToView(log, snapshot.key);
+      });
+
+      function addLogToView(log, key) {
+        const logContainer = document.getElementById("logContainer");
+        const logEntry = document.createElement("div");
+        logEntry.className = "log-entry";
+        logEntry.setAttribute("data-key", key);
+
+        const timestamp = document.createElement("span");
+        timestamp.className = "timestamp";
+        timestamp.textContent = log.timestamp;
+
+        const message = document.createElement("span");
+        message.className = "message";
+        message.textContent = log.message;
+
+        logEntry.appendChild(timestamp);
+        logEntry.appendChild(message);
+        logContainer.appendChild(logEntry);
+
+        // Auto-scroll to bottom
+        logContainer.scrollTop = logContainer.scrollHeight;
+      }
+
+      // Search functionality
+      document
+        .getElementById("searchInput")
+        .addEventListener("input", function (e) {
+          const searchText = e.target.value.toLowerCase();
+          const logEntries = document.getElementsByClassName("log-entry");
+
+          Array.from(logEntries).forEach((entry) => {
+            const message = entry
+              .querySelector(".message")
+              .textContent.toLowerCase();
+            const timestamp = entry
+              .querySelector(".timestamp")
+              .textContent.toLowerCase();
+
+            if (
+              message.includes(searchText) ||
+              timestamp.includes(searchText)
+            ) {
+              entry.style.display = "";
+            } else {
+              entry.style.display = "none";
+            }
+          });
+        });
+
+      function clearLogs() {
+        document.getElementById("logContainer").innerHTML = "";
+      }
+
+      function exportLogs() {
+        const logEntries = document.getElementsByClassName("log-entry");
+        let csv = "Timestamp,Message\n";
+
+        Array.from(logEntries).forEach((entry) => {
+          const timestamp = entry.querySelector(".timestamp").textContent;
+          const message = entry.querySelector(".message").textContent;
+          csv += `"${timestamp}","${message}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.setAttribute("hidden", "");
+        a.setAttribute("href", url);
+        a.setAttribute("download", "esp32_logs.csv");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    </script>
+  </body>
+</html>
